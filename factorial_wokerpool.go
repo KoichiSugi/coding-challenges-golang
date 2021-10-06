@@ -3,50 +3,73 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
-type Factorial struct {
-	original int
-	fNum     int
+type Result struct {
+	base int
+	fib  int64
 }
 
-func factorial(n int) int {
-	sum := 1
-	for i := 1; i <= n; i++ {
-		sum = sum * i
+var resultC = make(chan Result, NUM)
+var numbers = make(chan int, NUM)
+
+const NUM int = 100
+const NUMOFWORKER = 5
+
+func main() {
+	startTime := time.Now()
+	go splitNumbers()
+	go print()
+	workerPool()
+	endTime := time.Now()
+	timeTaken := endTime.Sub(startTime)
+	fmt.Println("Time taken for reading the book", timeTaken)
+}
+func splitNumbers() {
+	for i := 1; i <= NUM; i++ {
+		numbers <- i
 	}
-	return sum
+	close(numbers)
 }
-
-func worker(num int, wg *sync.WaitGroup) {
-	results <- Factorial{num, factorial(num)}
+func workerPool() {
+	var wg sync.WaitGroup
+	for i := 1; i <= NUMOFWORKER; i++ {
+		wg.Add(1)
+		go worker(&wg)
+	}
+	wg.Wait()
+	fmt.Println("all goroutines finished")
+	close(resultC)
+}
+func worker(wg *sync.WaitGroup) {
+	for number := range numbers {
+		resultC <- Result{number, fib(number)}
+	}
 	wg.Done()
 }
 
-func createWorkerPool(noOfJobs int) {
-	var wg sync.WaitGroup
-	for i := 0; i < len(nums); i++ {
-		wg.Add(1)
-		go worker(nums[i], &wg)
+func print() {
+	for e := range resultC {
+		fmt.Printf("base num : %d, fib num: %d \n", e.base, e.fib)
 	}
-	wg.Wait()
-	close(results) //close the channel all the jobs are done
 }
 
-func result(c chan bool) {
-	for e := range results {
-		fmt.Printf("Original number : %d, factorial: %d \n", e.original, e.fNum)
+//Dynamic Programming— O(N) Time, O(N) Space
+//Create a cache previously computed values so that we can reference them for later use.
+func fib(num int) int64 {
+	baseCases := map[int]int64{
+		1: 0,
+		2: 1,
 	}
-	c <- true
+	return getCache(num, baseCases)
 }
 
-var results = make(chan Factorial, 10)
-
-var nums = []int{15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
-
-func main() {
-	done := make(chan bool)
-	go result(done)
-	createWorkerPool(len(nums))
-	<-done
+//helper fucntion takes n's fib value along with map storing a pair
+func getCache(n int, cmap map[int]int64) int64 {
+	if v, found := cmap[n]; found {
+		return v
+	}
+	cmap[n] = getCache(n-1, cmap) + getCache(n-2, cmap) //recursive calls to calculate a fib number
+	return cmap[n]
 }
